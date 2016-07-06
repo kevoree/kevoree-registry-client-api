@@ -39,12 +39,13 @@ public class RegistryRestClient {
 				.body(new JSONObject().put("name", namespace)).asJson();
 	}
 
-	public void postTypeDef(final String namespace, final String model, final String typeDefName,
+	public HttpResponse<JsonNode> postTypeDef(final String namespace, final String model, final String typeDefName,
 			final String typeDefVersion) throws UnirestException {
-		Unirest.post(serverPath + "/api/namespaces/{namespace}/tdefs").routeParam("namespace", namespace)
+		HttpResponse<JsonNode> res = Unirest.post(serverPath + "/api/namespaces/{namespace}/tdefs").routeParam("namespace", namespace)
 				.header("Content-Type", "application/json;charset=UTF-8").header("Accept", "application/json")
 				.header("Authorization", "Bearer " + accessToken)
 				.body(new JSONObject().put("name", typeDefName).put("version", typeDefVersion).put("model", model))
 				.asJson();
+		return res;
 	}
 }
