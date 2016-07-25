@@ -1,12 +1,26 @@
 package org.kevoree.registry.client.api;
 
-import org.json.JSONObject;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 
+import org.json.JSONObject;
+import org.kevoree.registry.client.api.model.DeployUnit;
+import org.kevoree.registry.client.api.model.TypeDef;
+
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 
+/**
+ * 
+ * @author mleduc
+ *
+ */
 public class RegistryRestClient {
 	private final String serverPath;
 
@@ -18,34 +32,171 @@ public class RegistryRestClient {
 
 	private final String accessToken;
 
-	public HttpResponse<JsonNode> submitDU(final String namespace, final String tdefName, final String tdefVersion,
-			final String platform, final String model, final String duName, final String duVersion)
-			throws UnirestException {
-		final HttpResponse<JsonNode> res = Unirest
-				.post(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/dus")
+	public HttpResponse<JsonNode> postDeployUnit(final String namespace, final String tdefName,
+			final String tdefVersion, final String platform, final String model, final String duName,
+			final String duVersion) throws UnirestException {
+
+		final JsonNode jsonNode = new JsonNode(null);
+		jsonNode.getObject().put("model", model).put("name", duName).put("platform", platform).put("version",
+				duVersion);
+		return Unirest.post(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/dus")
 				.routeParam("namespace", namespace).routeParam("tdefName", tdefName)
 				.routeParam("tdefVersion", tdefVersion).header("Content-Type", "application/json;charset=UTF-8")
-				.header("Accept", "application/json")
-
-				.header("Authorization", "Bearer " + accessToken).body(new JSONObject().put("model", model)
-						.put("name", duName).put("platform", platform).put("version", duVersion))
+				.header("Accept", "application/json").header("Authorization", "Bearer " + accessToken).body(jsonNode)
 				.asJson();
-		return res;
 	}
 
-	public void postNamespace(final String namespace) throws UnirestException {
-		Unirest.post(serverPath + "/api/namespaces").header("Content-Type", "application/json;charset=UTF-8")
-				.header("Accept", "application/json").header("Authorization", "Bearer " + accessToken)
-				.body(new JSONObject().put("name", namespace)).asJson();
+	public HttpResponse<JsonNode> putDeployUnit(final String namespace, final String tdefName, final String tdefVersion,
+			final String platform, final String model, final String duName, final String duVersion, final Long duId)
+			throws UnirestException {
+		final JsonNode jsonNode = new JsonNode(null);
+		jsonNode.getObject().put("model", model).put("name", duName).put("platform", platform).put("version", duVersion)
+				.put("id", duId);
+		return Unirest
+				.put(serverPath
+						+ "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/dus/{name}/{version}/{platform}")
+				.routeParam("namespace", namespace).routeParam("tdefName", tdefName)
+				.routeParam("tdefVersion", tdefVersion).routeParam("name", duName).routeParam("version", duVersion)
+				.routeParam("platform", platform).header("Content-Type", "application/json;charset=UTF-8")
+				.header("Accept", "application/json").header("Authorization", "Bearer " + accessToken).body(jsonNode)
+				.asJson();
+	}
+
+	public HttpResponse<JsonNode> postNamespace(final String namespace) throws UnirestException {
+		final JsonNode jsonNode = new JsonNode(null);
+		jsonNode.getObject().put("name", namespace);
+		return Unirest.post(serverPath + "/api/namespaces").header("Content-Type", "application/json;charset=UTF-8")
+				.header("Accept", "application/json").header("Authorization", "Bearer " + accessToken).body(jsonNode)
+				.asJson();
 	}
 
 	public HttpResponse<JsonNode> postTypeDef(final String namespace, final String model, final String typeDefName,
 			final String typeDefVersion) throws UnirestException {
-		HttpResponse<JsonNode> res = Unirest.post(serverPath + "/api/namespaces/{namespace}/tdefs").routeParam("namespace", namespace)
+		final JsonNode jsonNode = new JsonNode(null);
+		jsonNode.getObject().put("name", typeDefName).put("version", typeDefVersion).put("model", model);
+		return Unirest.post(serverPath + "/api/namespaces/{namespace}/tdefs").routeParam("namespace", namespace)
 				.header("Content-Type", "application/json;charset=UTF-8").header("Accept", "application/json")
-				.header("Authorization", "Bearer " + accessToken)
-				.body(new JSONObject().put("name", typeDefName).put("version", typeDefVersion).put("model", model))
-				.asJson();
-		return res;
+				.header("Authorization", "Bearer " + accessToken).body(jsonNode).asJson();
 	}
+
+	public Set<TypeDef> getTypeDefs(final String namespace, final String name, final String version)
+			throws UnirestException {
+		final Set<TypeDef> ret;
+		final ObjectMapper objectMapper = new ObjectMapper();
+		if (version == null) {
+			final HttpResponse<JsonNode> res = Unirest.get(serverPath + "/api/namespaces/{namespace}/tdefs/{name}")
+					.routeParam("namespace", defaultNamespace(namespace)).routeParam("name", name)
+					.header("Accept", "*/*").asJson();
+
+			ret = new HashSet<>();
+			for (int i = 0; i < res.getBody().getArray().length(); i++) {
+
+				final JSONObject xd = res.getBody().getArray().getJSONObject(i);
+				final TypeDef convertValue = convertValue(xd, objectMapper, TypeDef.class);
+				if (convertValue != null) {
+					ret.add(convertValue);
+				}
+			}
+		} else {
+			final HttpResponse<JsonNode> res = this.getTypeDef(namespace, name, version);
+			ret = new HashSet<>();
+
+			final TypeDef convertValue = convertValue(res.getBody().getObject(), objectMapper, TypeDef.class);
+			if (convertValue != null) {
+				ret.add(convertValue);
+			}
+
+		}
+		return ret;
+	}
+
+	private <T> T convertValue(final JSONObject xd, final ObjectMapper objectMapper, final Class<T> clazz) {
+		T v = null;
+		try {
+			v = objectMapper.readValue(xd.toString(), clazz);
+		} catch (final JsonParseException e) {
+			e.printStackTrace();
+		} catch (final JsonMappingException e) {
+			e.printStackTrace();
+		} catch (final IOException e) {
+			e.printStackTrace();
+		}
+		return v;
+	}
+
+	public HttpResponse<JsonNode> getTypeDef(final String namespace, final String name, final String version)
+			throws UnirestException {
+		HttpResponse<JsonNode> asJson;
+		if (version != null) {
+			asJson = Unirest.get(serverPath + "/api/namespaces/{namespace}/tdefs/{name}/{version}")
+					.routeParam("namespace", defaultNamespace(namespace)).routeParam("name", name)
+					.routeParam("version", version).header("Accept", "application/json").asJson();
+		} else {
+			asJson = Unirest.get(serverPath + "/api/namespaces/{namespace}/tdefs/{name}")
+					.routeParam("namespace", defaultNamespace(namespace)).routeParam("name", name)
+					.header("Accept", "application/json").asJson();
+		}
+		return asJson;
+
+	}
+
+	private String defaultNamespace(final String namespace) {
+		if (namespace == null)
+			return "kevoree";
+		else
+			return namespace;
+	}
+
+	public HttpResponse<JsonNode> getDeployUnit(final String namespace, final String tdefName, final String tdefVersion,
+			final String platform, final String duName, final String duVersion) throws UnirestException {
+		return Unirest
+				.get(serverPath
+						+ "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/dus/{name}/{version}/{platform}")
+				.routeParam("namespace", namespace).routeParam("tdefName", tdefName)
+				.routeParam("tdefVersion", tdefVersion).routeParam("name", duName).routeParam("version", duVersion)
+				.routeParam("platform", platform).header("Accept", "application/json").asJson();
+
+	}
+
+	public TypeDef getLatestTypeDef(final String namespace, final String name) throws UnirestException {
+		final HttpResponse<JsonNode> asJson = Unirest.get(serverPath + "/api/namespaces/{namespace}/tdef/{name}/latest")
+				.routeParam("namespace", defaultNamespace(namespace)).routeParam("name", name)
+				.header("Accept", "application/json").asJson();
+		return convertValue(asJson.getBody().getObject(), new ObjectMapper(), TypeDef.class);
+	}
+
+	public DeployUnit getDeployUnitRelease(final String namespace, final String name, final String version,
+			final String platform) throws UnirestException {
+		final HttpResponse<JsonNode> asJson = Unirest
+				.get(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/released-dus/{platform}")
+				.routeParam("namespace", defaultNamespace(namespace)).routeParam("tdefName", name)
+				.routeParam("tdefVersion", version).routeParam("platform", platform)
+				.header("Accept", "application/json").asJson();
+		final DeployUnit ret;
+		if (asJson.getStatus() < 400) {
+			ret = convertValue(asJson.getBody().getObject(), new ObjectMapper(), DeployUnit.class);
+		} else {
+			ret = null;
+		}
+		return ret;
+
+	}
+
+	public DeployUnit getDeployUnitLatest(final String namespace, final String name, final String version,
+			final String platform) throws UnirestException {
+		final HttpResponse<JsonNode> asJson = Unirest
+				.get(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/latest-dus/{platform}")
+				.routeParam("namespace", defaultNamespace(namespace)).routeParam("tdefName", name)
+				.routeParam("tdefVersion", version).routeParam("platform", platform)
+				.header("Accept", "application/json").asJson();
+		final DeployUnit ret;
+		if (asJson.getStatus() < 400) {
+			ret = convertValue(asJson.getBody().getObject(), new ObjectMapper(), DeployUnit.class);
+		} else {
+			ret = null;
+		}
+		return ret;
+
+	}
+
 }

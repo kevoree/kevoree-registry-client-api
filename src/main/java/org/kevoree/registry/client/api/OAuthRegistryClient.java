@@ -21,6 +21,9 @@ public class OAuthRegistryClient {
 				.body("username=" + login + "&password=" + password
 						+ "&grant_type=password&scope=read%20write&client_secret=kevoree_registryapp_secret&client_id=kevoree_registryapp")
 				.asJson();
+		if(!res.getBody().getObject().has("access_token")) {
+			throw new RuntimeException("Authentication failed");
+		}
 		return res.getBody().getObject().getString("access_token");
 	}
 }
