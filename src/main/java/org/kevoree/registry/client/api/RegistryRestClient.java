@@ -1,9 +1,12 @@
 package org.kevoree.registry.client.api;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.kevoree.registry.client.api.model.DeployUnit;
 import org.kevoree.registry.client.api.model.TypeDef;
@@ -110,20 +113,6 @@ public class RegistryRestClient {
 		return ret;
 	}
 
-	private <T> T convertValue(final JSONObject xd, final ObjectMapper objectMapper, final Class<T> clazz) {
-		T v = null;
-		try {
-			v = objectMapper.readValue(xd.toString(), clazz);
-		} catch (final JsonParseException e) {
-			e.printStackTrace();
-		} catch (final JsonMappingException e) {
-			e.printStackTrace();
-		} catch (final IOException e) {
-			e.printStackTrace();
-		}
-		return v;
-	}
-
 	public HttpResponse<JsonNode> getTypeDef(final String namespace, final String name, final String version)
 			throws UnirestException {
 		HttpResponse<JsonNode> asJson;
@@ -182,6 +171,23 @@ public class RegistryRestClient {
 
 	}
 
+	public List<DeployUnit> getAllDeployUnitRelease(final String namespace, final String name, final String version)
+			throws UnirestException {
+		final HttpResponse<JsonNode> asJson = Unirest
+				.get(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/released-dus")
+				.routeParam("namespace", defaultNamespace(namespace)).routeParam("tdefName", name)
+				.routeParam("tdefVersion", version).header("Accept", "application/json").asJson();
+		final List<DeployUnit> ret;
+		if (asJson.getStatus() < 400) {
+
+			ret = convertValue(asJson.getBody().getArray(), new ObjectMapper(), DeployUnit.class);
+		} else {
+			ret = null;
+		}
+		return ret;
+
+	}
+
 	public DeployUnit getDeployUnitLatest(final String namespace, final String name, final String version,
 			final String platform) throws UnirestException {
 		final HttpResponse<JsonNode> asJson = Unirest
@@ -197,6 +203,46 @@ public class RegistryRestClient {
 		}
 		return ret;
 
+	}
+
+	public List<DeployUnit> getAllDeployUnitLatest(final String namespace, final String name, final String version)
+			throws UnirestException {
+		final HttpResponse<JsonNode> asJson = Unirest
+				.get(serverPath + "/api/namespaces/{namespace}/tdefs/{tdefName}/{tdefVersion}/latest-dus")
+				.routeParam("namespace", defaultNamespace(namespace)).routeParam("tdefName", name)
+				.routeParam("tdefVersion", version).header("Accept", "application/json").asJson();
+		final List<DeployUnit> ret;
+		if (asJson.getStatus() < 400) {
+			ret = convertValue(asJson.getBody().getArray(), new ObjectMapper(), DeployUnit.class);
+		} else {
+			ret = null;
+		}
+		return ret;
+
+	}
+
+	private <T> List<T> convertValue(final JSONArray array, final ObjectMapper objectMapper, final Class<T> clazz) {
+		final List<T> ret = new ArrayList<>();
+		for (int i = 0; i < array.length(); i++) {
+			final JSONObject current = (JSONObject) array.get(i);
+			ret.add(convertValue(current, objectMapper, clazz));
+		}
+
+		return ret;
+	}
+
+	private <T> T convertValue(final JSONObject xd, final ObjectMapper objectMapper, final Class<T> clazz) {
+		T v = null;
+		try {
+			v = objectMapper.readValue(xd.toString(), clazz);
+		} catch (final JsonParseException e) {
+			e.printStackTrace();
+		} catch (final JsonMappingException e) {
+			e.printStackTrace();
+		} catch (final IOException e) {
+			e.printStackTrace();
+		}
+		return v;
 	}
 
 }
